@@ -197,7 +197,7 @@ def load_documents_from_s3_bucket():
     print(f"Se cargaron {len(documents)} documentos desde S3.")
     return documents
 
-def split_documents(documents: list[Document], chunk_size=512, chunk_overlap=150):
+def split_documents(documents: list[Document], chunk_size=1000, chunk_overlap=200):
     """Divide los documentos en chunks más pequeños."""
     print(f"Dividiendo documentos en chunks (tamaño={chunk_size}, solapamiento={chunk_overlap})...")
     text_splitter = RecursiveCharacterTextSplitter(
@@ -349,12 +349,13 @@ def query_rag(query_text: str, chat_history: list[AIMessage | HumanMessage]):
     # Adaptar el prompt para Gemini si es necesario, o mantenerlo general
     prompt_template = PromptTemplate(
         input_variables=["context", "question"],
-        template="Eres un asistente útil que responde preguntas basadas en el contexto proporcionado. "
-                 "Usa solo la información del contexto dado. Si la pregunta no puede ser respondida con la "
-                 "información proporcionada, responde 'No tengo suficiente información para responder a esta pregunta.'\n\n"
-                 "Contexto: {context}\n\n"
-                 "Pregunta: {question}\n"
-                 "Respuesta:",
+        template="Eres un asistente útil que responde preguntas basadas UNICAMENTE en el contexto proporcionado. "
+             "**Responde siempre en español.** " # <--- ¡AÑADE ESTA INSTRUCCIÓN CLARA!
+             "Si la pregunta no puede ser respondida con la información proporcionada, "
+             "responde 'No tengo suficiente información para responder a esta pregunta.'\n\n"
+             "Contexto: {context}\n\n"
+             "Pregunta: {question}\n"
+             "Respuesta:",
     )
 
     qa_chain = RetrievalQA.from_chain_type(
