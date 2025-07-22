@@ -45,6 +45,7 @@ app = FastAPI(
 origins = [
     "https://b23f2452-424c-4193-9c31-22d63193d802.lovableproject.com", # Tu frontend en Lovable Project
     "https://b23f2452-42ac-4193-9c31-22d63193d802.lovableproject.com/#",
+    "https://lovable.dev/projects/b23f2452-42ac-4193-9c31-22d63193d802",
     "https://tfm-backend-ik11.onrender.com", # Tu propio backend de Render si accedes directamente
    
 ]
