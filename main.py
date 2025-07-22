@@ -9,6 +9,9 @@ from typing import List, Optional
 import boto3 # Asegúrate de importar boto3 también
 from botocore.exceptions import NoCredentialsError # ¡Asegúrate de que esté aquí!
 
+# ¡IMPORTACIONES CORS!
+from fastapi.middleware.cors import CORSMiddleware
+
 # Cargar variables de entorno al inicio de la aplicación
 load_dotenv()
 
@@ -27,6 +30,31 @@ app = FastAPI(
     title="RAG Backend API",
     description="API para un sistema RAG (Retrieval Augmented Generation) con gestión de documentos CRUD. Ahora con S3 y Pinecone.",
     version="2.0.0",
+)
+
+# --- ¡CONFIGURACIÓN CORS AQUÍ! ---
+# Lista de orígenes permitidos. Para desarrollo, puedes usar ["*"] (todos los orígenes),
+# pero para producción, DEBES especificar los dominios exactos.
+# El dominio de Lovable Project es `https://b23f2452-424c-4193-9c31-22d63193d802.lovableproject.com`
+# También incluye tu URL de Render para pruebas si la usas desde el navegador directamente.
+
+# Puedes obtener tu URL de Render desde el dashboard de Render.
+# Para este ejemplo, voy a asumir que quieres permitir Lovable Project y cualquier origen.
+# Recomiendo encarecidamente *NO* usar ["*"] en producción.
+
+origins = [
+    "https://b23f2452-424c-4193-9c31-22d63193d802.lovableproject.com", # Tu frontend en Lovable Project
+    "https://b23f2452-42ac-4193-9c31-22d63193d802.lovableproject.com/#",
+    "https://tfm-backend-ik11.onrender.com", # Tu propio backend de Render si accedes directamente
+   
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True, # Permitir cookies, cabeceras de autorización, etc.
+    allow_methods=["*"],    # Permitir todos los métodos (GET, POST, PUT, DELETE, OPTIONS)
+    allow_headers=["*"],    # Permitir todos los encabezados HTTP
 )
 
 # Pydantic models para las respuestas/peticiones
