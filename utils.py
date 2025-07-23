@@ -48,7 +48,7 @@ except Exception as e:
 
 # --- Inicialización de modelos (Google Gemini) ---
 embeddings_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001") # O el modelo de embedding de Gemini que prefieras
-llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.7) # O el modelo LLM de Gemini que prefieras
+llm = ChatGoogleGenerativeAI(model="models/gemini-pro", temperature=0.7) # O el modelo LLM de Gemini que prefieras
 
 # Instancia global del vector store (Pinecone)
 vector_store = None
