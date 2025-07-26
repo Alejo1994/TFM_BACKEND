@@ -1,6 +1,7 @@
 #crear un documento solo con el nombre .env y llenar las siguientes variables
 
-GOOGLE_API_KEY = 'your google api key' -> solo si usan modelos de gemini, para el modelo qwen no se necesita eso ni api key
+GOOGLE_API_KEY = 'your google api key' -> solo si usan modelos de gemini
+OPENROUTER_API_KEY = 'your api lkey de OPENIA' -> Se utiliza solo para Qwen
 # Configuración opcional para LangSmith (¡Altamente recomendado para depurar!)
 LANGCHAIN_TRACING_V2=true
 LANGCHAIN_API_KEY="your langchain api key"
