@@ -4,32 +4,31 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from typing import List, Optional
+from typing import List, Optional, Union
 
-import boto3 # Asegúrate de importar boto3 también
-from botocore.exceptions import NoCredentialsError # ¡Asegúrate de que esté aquí!
 
-# ¡IMPORTACIONES CORS!
-from fastapi.middleware.cors import CORSMiddleware
-
-# Cargar variables de entorno al inicio de la aplicación
+# Cargar variables de entorno al inicio
 load_dotenv()
 
 # Importar funciones y clientes de utilidad
 from utils import (
-    S3_CLIENT, # Importa el cliente S3 inicializado
-    S3_BUCKET_NAME, # Importa el nombre del bucket S3
+    S3_CLIENT,
+    S3_BUCKET_NAME,
     query_rag,
     recreate_vector_store_from_all_documents,
     update_vector_store_for_rag,
-    load_document_content_from_s3, # Para obtener contenido de S3
-    initialize_system # Para inicializar las conexiones
+    load_document_content_from_s3,
+    initialize_system,
+    get_vector_store,
+    get_doc_store # Asegúrate de que esta función ahora devuelva CustomS3DocumentStore
 )
+from botocore.exceptions import NoCredentialsError # Para capturar errores de AWS
+
 
 app = FastAPI(
-    title="RAG Backend API",
-    description="API para un sistema RAG (Retrieval Augmented Generation) con gestión de documentos CRUD. Ahora con S3 y Pinecone.",
-    version="2.0.0",
+    title="RAG Backend API (ParentDocumentRetriever)",
+    description="API para un sistema RAG avanzado con ParentDocumentRetriever, S3 y Pinecone/Redis.",
+    version="3.0.0", # Nueva versión para indicar un cambio mayor
 )
 
 # --- ¡CONFIGURACIÓN CORS AQUÍ! ---
@@ -45,17 +44,17 @@ app = FastAPI(
 origins = [
     "https://b23f2452-424c-4193-9c31-22d63193d802.lovableproject.com", # Tu frontend en Lovable Project
     "https://b23f2452-42ac-4193-9c31-22d63193d802.lovableproject.com",
-    "https://lovable.dev/projects/b23f2452-42ac-4193-9c31-22d63193d802",
     "https://tfm-backend-ik11.onrender.com", # Tu propio backend de Render si accedes directamente
-    "*"
+   "*"
 ]
 
+from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=True, # Permitir cookies, cabeceras de autorización, etc.
-    allow_methods=["*"],    # Permitir todos los métodos (GET, POST, PUT, DELETE, OPTIONS)
-    allow_headers=["*"],    # Permitir todos los encabezados HTTP
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Pydantic models para las respuestas/peticiones
@@ -104,114 +103,86 @@ async def startup_event():
 
 @app.post("/documents/upload", response_model=DocumentUploadResponse, summary="Subir un nuevo documento a S3 y procesarlo para RAG.")
 async def upload_document(file: UploadFile = File(...)):
-    """
-    Sube un archivo a AWS S3 y luego lo procesa para incluirlo en el sistema RAG.
-    """
-    if not S3_BUCKET_NAME:
-        raise HTTPException(status_code=500, detail="Nombre del bucket S3 no configurado.")
-    if not S3_CLIENT:
-        raise HTTPException(status_code=500, detail="Cliente S3 no inicializado.")
+    if not S3_BUCKET_NAME: raise HTTPException(status_code=500, detail="S3 bucket name not configured.")
+    if not S3_CLIENT: raise HTTPException(status_code=500, detail="S3 client not initialized.")
+    if not file.filename: raise HTTPException(status_code=400, detail="Filename cannot be empty.")
 
     filename = file.filename
-    if not filename:
-        raise HTTPException(status_code=400, detail="El nombre del archivo no puede estar vacío.")
-
     try:
-        # Sube el archivo directamente a S3
         S3_CLIENT.upload_fileobj(file.file, S3_BUCKET_NAME, filename)
         print(f"Archivo '{filename}' subido a S3.")
-
-        # Dispara la actualización del vector store para incluir este nuevo documento
-        update_vector_store_for_rag(file_paths_to_add=[filename])
-        
+        update_vector_store_for_rag(file_paths_to_add=[filename]) # Dispara indexación
         return {"message": f"Archivo '{filename}' subido a S3 y procesado para RAG.", "filename": filename}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al procesar el documento para RAG: {e}")
 
-
 @app.get("/documents", response_model=DocumentListResponse, summary="Listar todos los documentos en S3.")
 async def list_documents():
-    """
-    Lista todos los archivos presentes en el bucket S3 configurado.
-    """
-    if not S3_BUCKET_NAME:
-        raise HTTPException(status_code=500, detail="Nombre del bucket S3 no configurado.")
-    if not S3_CLIENT:
-        raise HTTPException(status_code=500, detail="Cliente S3 no inicializado.")
-
+    if not S3_BUCKET_NAME: raise HTTPException(status_code=500, detail="S3 bucket name not configured.")
+    if not S3_CLIENT: raise HTTPException(status_code=500, detail="S3 client not initialized.")
     try:
         response = S3_CLIENT.list_objects_v2(Bucket=S3_BUCKET_NAME)
-        # Extrae solo los nombres de los archivos. `Contents` podría no existir si el bucket está vacío.
         files = [obj['Key'] for obj in response.get('Contents', [])]
         return {"documents": files}
-    except NoCredentialsError:
-        raise HTTPException(status_code=500, detail="Credenciales de AWS no configuradas o inválidas.")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al listar documentos de S3: {e}")
+    except NoCredentialsError: raise HTTPException(status_code=500, detail="AWS credentials not configured or invalid.")
+    except Exception as e: raise HTTPException(status_code=500, detail=f"Error listing documents from S3: {e}")
 
 @app.get("/documents/{filename}", response_model=DocumentContentResponse, summary="Obtener el contenido de un documento desde S3.")
 async def get_document_content(filename: str):
-    """
-    Obtiene el contenido de un archivo específico desde AWS S3.
-    """
-    if not S3_BUCKET_NAME:
-        raise HTTPException(status_code=500, detail="Nombre del bucket S3 no configurado.")
-    if not S3_CLIENT:
-        raise HTTPException(status_code=500, detail="Cliente S3 no inicializado.")
+    if not S3_BUCKET_NAME: raise HTTPException(status_code=500, detail="S3 bucket name not configured.")
+    if not S3_CLIENT: raise HTTPException(status_code=500, detail="S3 client not initialized.")
 
     content_bytes = load_document_content_from_s3(filename)
-    if content_bytes is None:
-        raise HTTPException(status_code=404, detail="Documento no encontrado.")
+    if content_bytes is None: raise HTTPException(status_code=404, detail="Documento no encontrado.")
     
-    try:
-        # Intenta decodificar a UTF-8. Podrías necesitar manejo de errores más sofisticado
-        # para diferentes codificaciones.
-        content_text = content_bytes.decode('utf-8')
-        return {"filename": filename, "content": content_text}
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=500, detail="No se pudo decodificar el contenido del archivo a texto UTF-8.")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al obtener contenido del documento: {e}")
-
+    try: return {"filename": filename, "content": content_bytes.decode('utf-8')}
+    except UnicodeDecodeError: raise HTTPException(status_code=500, detail="Could not decode file content to UTF-8 text.")
+    except Exception as e: raise HTTPException(status_code=500, detail=f"Error getting document content: {e}")
 
 @app.delete("/documents/{filename}", summary="Eliminar un documento de S3 y del RAG.")
 async def delete_document(filename: str):
-    """
-    Elimina un archivo de AWS S3 y actualiza el sistema RAG para remover su información.
-    """
-    if not S3_BUCKET_NAME:
-        raise HTTPException(status_code=500, detail="Nombre del bucket S3 no configurado.")
-    if not S3_CLIENT:
-        raise HTTPException(status_code=500, detail="Cliente S3 no inicializado.")
-
+    if not S3_BUCKET_NAME: raise HTTPException(status_code=500, detail="S3 bucket name not configured.")
+    if not S3_CLIENT: raise HTTPException(status_code=500, detail="S3 client not initialized.")
     try:
-        # Elimina el archivo de S3
         S3_CLIENT.delete_object(Bucket=S3_BUCKET_NAME, Key=filename)
         print(f"Archivo '{filename}' eliminado de S3.")
-
-        # Dispara la actualización del vector store.
-        # Para simplificar, una eliminación dispara una reconstrucción completa en este ejemplo.
-        update_vector_store_for_rag(file_names_to_delete=[filename])
-        
+        # La eliminación dispara una reconstrucción completa para asegurar consistencia
+        recreate_vector_store_from_all_documents()
         return {"message": f"Archivo '{filename}' eliminado de S3 y procesado para su remoción del RAG."}
-    except S3_CLIENT.exceptions.NoSuchKey:
-        raise HTTPException(status_code=404, detail="Documento no encontrado en S3.")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al eliminar el documento: {e}")
+    except S3_CLIENT.exceptions.NoSuchKey: raise HTTPException(status_code=404, detail="Documento no encontrado en S3.")
+    except Exception as e: raise HTTPException(status_code=500, detail=f"Error deleting document: {e}")
+
 
 # --- Endpoint para el RAG ---
 
+ #En query endpoint, el check de doc_store cambiaría:
 @app.post("/query", response_model=QueryResponse, summary="Consultar el sistema RAG.")
 async def query(request: QueryRequest):
-    """
-    Envía una consulta al sistema RAG y recibe una respuesta basada en los documentos.
-    """
+    # ! IMPORTANTE: REMOVER O MODIFICAR ESTA LÍNEA QUE CAUSA EL ERROR !
+    # if not get_vector_store()._index_name: # <-- ESTA LÍNEA
+    #     raise HTTPException(status_code=400, detail="El índice RAG (Pinecone) está vacío o no inicializado. Por favor, suba documentos o recree el índice.")
+    
+    # Opción más segura y simple: Asumir que si el get_vector_store() no falló,
+    # el vector store está inicializado. Si el índice está vacío, el retriever
+    # simplemente no encontrará documentos y el LLM responderá "No tengo suficiente información".
+    # Si quieres una validación explícita para saber si el índice tiene datos,
+    # tendrías que consultar la API de Pinecone para la cuenta de vectores.
+    # Por ejemplo (requiere la librería 'pinecone-client' directamente, no solo la integración):
+    # from pinecone import Pinecone
+    # pinecone_client = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+    # try:
+    #     index_stats = pinecone_client.describe_index_stats(index=os.getenv("PINECONE_INDEX_NAME"))
+    #     if index_stats.dimension == 0 or index_stats.total_vector_count == 0:
+    #         raise HTTPException(status_code=400, detail="El índice RAG (Pinecone) está vacío. Suba documentos primero.")
+    # except Exception as e:
+    #     print(f"Error al verificar stats de Pinecone: {e}")
+    #     # Si falla la verificación de stats, podría ser un problema de conexión a Pinecone.
+    #     # Decidir si permitir la consulta o lanzar un error.
+    #     pass # Permitir que la consulta RAG continúe, el LLM responderá si no hay docs.
+
+
     try:
-        # chat_history aquí se pasa como una lista de strings.
-        # Si quisieras pasar objetos AIMessage/HumanMessage, tendrías que adaptarlo.
-        response = query_rag(request.query, request.chat_history)
-        
-        # Formatear source_documents para la respuesta
+        response = query_rag(request.query, request.chat_history) 
         source_docs_formatted = []
         if 'source_documents' in response:
             for doc in response['source_documents']:
@@ -222,23 +193,24 @@ async def query(request: QueryRequest):
 
         return {"response": response['result'], "source_documents": source_docs_formatted}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al procesar la consulta RAG: {e}")
+        print(f"Error processing RAG query: {e}")
+        # Aquí puedes añadir más detalles al error si necesitas ver la traza completa
+        import traceback
+        traceback.print_exc() # Imprime la traza completa en los logs del servidor
+        raise HTTPException(status_code=500, detail=f"Error interno al procesar la consulta RAG: {e}")
+
+    
 
 # --- Endpoint de salud ---
 @app.get("/health")
 async def health_check():
-    """Endpoint para verificar el estado de la API."""
     return {"status": "ok", "message": "API is running"}
 
 # --- Endpoint de reinicio de RAG (útil para desarrollo/depuración) ---
-@app.post("/recreate-rag-index", summary="Recrea completamente el índice RAG desde todos los documentos en S3.")
+@app.post("/recreate-rag-index", summary="Recrea completamente el índice RAG desde todos los documentos en S3 y Redis.")
 async def recreate_rag_index_endpoint():
-    """
-    Elimina y reconstruye completamente el índice RAG en Pinecone
-    basándose en todos los documentos actuales en el bucket S3.
-    """
     try:
         recreate_vector_store_from_all_documents()
-        return {"message": "Índice RAG recreado exitosamente desde S3."}
+        return {"message": "Índice RAG recreado exitosamente desde S3 y Redis."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al recrear el índice RAG: {e}")
