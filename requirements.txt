@@ -7,5 +7,6 @@ pypdf # Para PDFs
 boto3 # Para AWS S3
 langchain-text-splitters # Asegura que RecursiveCharacterTextSplitter esté disponible
 langchain-community # Para PyPDFLoader, TextLoader, UnstructuredMarkdownLoader
-langchain-core # Para Document
-python-multipart # solucionar error en render
+langchain-core # Para Documents
+langchain-community # Ya lo tienes, pero asegura que esté para RedisStore
+langchain-aws # Para S3ByteStore
