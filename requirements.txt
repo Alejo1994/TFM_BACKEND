@@ -10,3 +10,4 @@ langchain-community # Para PyPDFLoader, TextLoader, UnstructuredMarkdownLoader
 langchain-core # Para Documents
 langchain-community # Ya lo tienes, pero asegura que esté para RedisStore
 langchain-aws # Para S3ByteStore
+python-multipart
