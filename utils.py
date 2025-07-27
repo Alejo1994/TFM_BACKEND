@@ -66,7 +66,8 @@ llm = ChatOpenAI(
     model="qwen/qwen3-235b-a22b-2507:free", # ¡Este sería el nombre del modelo en OpenRouter! (Verificar su documentación)
     openai_api_base="https://openrouter.ai/api/v1",
     openai_api_key=os.getenv("OPENROUTER_API_KEY"),
-    temperature=0.7
+    temperature=0.7,
+    timeout=120
 )
 
 # Instancias globales
