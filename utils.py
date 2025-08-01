@@ -63,7 +63,7 @@ embeddings_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001") # 
 # OPENROUTER_API_KEY="sk_tu_clave_de_openrouter"
 
 llm = ChatOpenAI(
-    model="qwen/qwen3-235b-a22b:free", # ¡Este sería el nombre del modelo en OpenRouter! (Verificar su documentación)
+    model="Qwen/Qwen2.5-72B-Instruct", # ¡Este sería el nombre del modelo en OpenRouter! (Verificar su documentación)
     openai_api_base="https://openrouter.ai/api/v1",
     openai_api_key=os.getenv("OPENROUTER_API_KEY"),
     temperature=0.7,
@@ -549,4 +549,5 @@ def initialize_system():
     except Exception as e:
         print(f"Fallo al inicializar el sistema: {e}")
         raise # Lanzar la excepción para que FastAPI la capture
+
 
