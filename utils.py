@@ -58,17 +58,17 @@ except Exception as e:
 
 # --- Inicialización de modelos (Google Gemini) ---
 embeddings_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001") # O el modelo de embedding de Gemini que prefieras
-#llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.7) # O el modelo LLM de Gemini que prefieras
+llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.7) # O el modelo LLM de Gemini que prefieras
 # Configura tu API key de OpenRouter en .env como OPENROUTER_API_KEY
 # OPENROUTER_API_KEY="sk_tu_clave_de_openrouter"
 
-llm = ChatOpenAI(
-    model="Qwen/Qwen2.5-72B-Instruct", # ¡Este sería el nombre del modelo en OpenRouter! (Verificar su documentación)
-    openai_api_base="https://openrouter.ai/api/v1",
-    openai_api_key=os.getenv("OPENROUTER_API_KEY"),
-    temperature=0.7,
-    timeout=120
-)
+#llm = ChatOpenAI(
+#    model="Qwen/Qwen2.5-72B-Instruct", # ¡Este sería el nombre del modelo en OpenRouter! (Verificar su documentación)
+#    openai_api_base="https://openrouter.ai/api/v1",
+#    openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+#    temperature=0.7,
+#    timeout=120
+#)
 
 # Instancias globales
 vector_store = None # Para PineconeVectorStore (hijos)
@@ -549,5 +549,6 @@ def initialize_system():
     except Exception as e:
         print(f"Fallo al inicializar el sistema: {e}")
         raise # Lanzar la excepción para que FastAPI la capture
+
 
 
